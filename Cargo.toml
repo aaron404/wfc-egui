@@ -1,9 +1,8 @@
 [package]
-name = "eframe_template"
+name = "wfc-egui"
 version = "0.1.0"
-authors = ["Emil Ernerfeldt <emil.ernerfeldt@gmail.com>"]
+authors = ["Aaron Hill <aaronhill404@gmail.com>"]
 edition = "2021"
-rust-version = "1.65"
 
 
 [dependencies]
