@@ -1,3 +1,9 @@
+use egui::{ColorImage, Style};
+use image::EncodableLayout;
+
+const TILEMAP_PATH: &str = "res/tilemap.png";
+const TILE_SIZE: u32 = 16;
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -10,6 +16,10 @@ pub struct WfcApp {
     value: f32,
     tile_selection: Option<usize>,
     num_tiles: usize,
+    #[serde(skip)]
+    tile_textures: Vec<Option<egui::TextureHandle>>,
+    #[serde(skip)]
+    tile_images: Vec<ColorImage>,
 }
 
 impl Default for WfcApp {
@@ -19,7 +29,9 @@ impl Default for WfcApp {
             label: "Hello World!".to_owned(),
             value: 2.7,
             tile_selection: None,
-            num_tiles: 5,
+            num_tiles: 0,
+            tile_textures: vec![],
+            tile_images: vec![],
         }
     }
 }
@@ -32,11 +44,27 @@ impl WfcApp {
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
+        let mut app: Self = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Default::default()
+        };
 
-        Default::default()
+        let s = include_bytes!("../res/tilemap.png");
+        let img = image::load_from_memory(s).expect("Failed to load tilemap");
+        // let img = image::open(TILEMAP_PATH).expect("Failed to load tilemap");
+        println!("img size: {} {}", img.width(), img.height());
+        for x in 0..img.width() / TILE_SIZE {
+            let tile = img.crop_imm(x * TILE_SIZE, 0, TILE_SIZE, TILE_SIZE);
+            let tex = egui::ColorImage::from_rgb([16, 16], tile.into_rgb8().as_bytes());
+            println!("  num images:   {}", app.tile_images.len());
+            app.tile_images.push(tex);
+            app.tile_textures.push(None);
+        }
+        println!("  num images:   {}", app.tile_images.len());
+        println!("  num textures: {}", app.tile_textures.len());
+
+        app
     }
 }
 
@@ -52,8 +80,10 @@ impl eframe::App for WfcApp {
         let Self {
             label,
             value,
-            tile_selection,
-            num_tiles,
+            tile_selection: _,
+            num_tiles: _,
+            tile_textures: _,
+            tile_images: _,
         } = self;
 
         // Examples of how to create different panels and windows.
@@ -74,33 +104,23 @@ impl eframe::App for WfcApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("SiDde Panel");
+            ui.label("Palette");
 
             ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(label);
-            });
-
-            ui.add(egui::Slider::new(value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                *value += 1.0;
-            }
-
-            ui.horizontal(|ui| {
-                // SelectableImage::new(false, "asdf", None).ui(ui);
-                // SelectableImage::new(true, "fdsa", None).ui(ui);
-                // SelectableImage::new(false, "qwer", None).ui(ui);
-                let t = ui.ctx().load_texture(
-                    "tilemap",
-                    egui::ColorImage::example(),
-                    Default::default(),
-                );
-
-                for i in 0..self.num_tiles {
+                // let i  = egui::ImageData::Color(egui::ColorImage::)
+                for i in 0..self.tile_images.len() {
+                    let t: &egui::TextureHandle = self.tile_textures[i].get_or_insert_with(|| {
+                        ui.ctx().load_texture(
+                            format!("tile_{i}"),
+                            self.tile_images[i].clone(),
+                            // egui::ColorImage::example(),
+                            Default::default(),
+                        )
+                    });
                     if ui
                         .add(
-                            egui::ImageButton::new(&t, t.size_vec2())
-                                .frame(false)
+                            egui::ImageButton::new(t, t.size_vec2() * 2.0)
+                                // .frame(false)
                                 .selected(if let Some(s) = self.tile_selection {
                                     i == s
                                 } else {
@@ -121,6 +141,10 @@ impl eframe::App for WfcApp {
                     }
                 }
             });
+
+            if let Some(s) = self.tile_selection {
+                ui.label(format!("tile selected: {s}"));
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
